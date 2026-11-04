@@ -126,6 +126,8 @@ turn_q = Question(
 decision_fn = make_duplexjev_decision_fn(
     session, barge_question=barge_q, turn_question=turn_q,
     suffix=MODEL_CHAT_TEMPLATE_SUFFIX,
+    # Optional: return token IDs including assistant role/turn markers.
+    played_text_encoder=render_played_assistant_span,
 )
 runtime = DuplexStreamingRuntime(decision_fn)
 
@@ -152,8 +154,11 @@ Important constraints:
 - `prefix_text` and `suffix` must reproduce the model's trained chat template.
   They are not guessed automatically; use the same system/user/assistant prompt
   conventions as the checkpoint.
-- Tokenize and append only stable text spans that have actually played. Do not
-  retokenize committed text or append generated-but-unplayed TTS text.
+- Append only stable text spans that have actually played. Prefer
+  `append_text_tokens()` with token IDs rendered using the checkpoint's exact
+  chat template (including assistant role/turn markers); use `played_text_encoder`
+  in the runtime adapter for this. Do not retokenize committed text or append
+  generated-but-unplayed TTS text.
 - Audio and played-text events must be serialized by the Voice Runtime in their
   actual event-time order before they are appended to the shared causal prefix.
   Do not append late-arriving events out of order.
