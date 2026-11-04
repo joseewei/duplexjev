@@ -23,8 +23,10 @@ class DuplexStreamingRuntime:
     if it already supported streaming KV cache.
     """
     def __init__(self, decision_fn: Callable[..., dict], *, barge_threshold: float = 0.75,
-                 turn_threshold: float = 0.75):
+                 turn_threshold: float = 0.75, on_ai_played_text=None, on_audio_embeddings=None):
         self.decision_fn = decision_fn
+        self.on_ai_played_text = on_ai_played_text or getattr(decision_fn, "on_ai_played_text", None)
+        self.on_audio_embeddings = on_audio_embeddings or getattr(decision_fn, "on_audio_embeddings", None)
         self.barge_threshold = float(barge_threshold)
         self.turn_threshold = float(turn_threshold)
         self.context = StreamingContext()
@@ -34,10 +36,16 @@ class DuplexStreamingRuntime:
         return self.context.set_state(RuntimeState(state).value)
 
     def commit_ai_playback(self, text: str, *, playback_offset_ms: int) -> int:
-        return self.context.commit_played_text(text, playback_offset_ms=playback_offset_ms)
+        seq = self.context.commit_played_text(text, playback_offset_ms=playback_offset_ms)
+        if text and self.on_ai_played_text is not None:
+            self.on_ai_played_text(text)
+        return seq
 
     def append_audio_event(self, audio_embedding_chunk: Any, *, start_ms: int, end_ms: int) -> int:
-        return self.context.append_user_audio(audio_embedding_chunk, start_ms=start_ms, end_ms=end_ms)
+        seq = self.context.append_user_audio(audio_embedding_chunk, start_ms=start_ms, end_ms=end_ms)
+        if self.on_audio_embeddings is not None:
+            self.on_audio_embeddings(audio_embedding_chunk)
+        return seq
 
     def query(self, audio_prefix: Any) -> dict[str, Any] | None:
         state = self.context.runtime_state
@@ -88,4 +96,6 @@ def make_duplexjev_decision_fn(session, *, barge_question, turn_question, suffix
         return {"answer": result["best_option"], "confidence": result["confidence"],
                 "probabilities": result["probabilities"]}
 
+    decide.on_ai_played_text = session.append_text
+    decide.on_audio_embeddings = session.append_audio_embeddings
     return decide
