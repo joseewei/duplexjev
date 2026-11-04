@@ -19,16 +19,20 @@ class StreamingUltravoxSession:
 
     Consumes already-projected audio embeddings (WeNet -> trained projector) and
     tokenizer-stable text. The caller supplies static prompt text at creation.
-    Shared-prefix appends mutate only state.cache. Query inference deep-copies
-    that cache, so query tokens cannot leak into later decisions.
+    Query suffixes are appended temporarily and rolled back from the cache.
     """
-    def __init__(self, model, tokenizer, *, prefix_text: str = "",
-                 device: Optional[object] = None):
+    def __init__(self, model, tokenizer, *, prefix_text: str = "", device: Optional[object] = None):
         from transformers.cache_utils import DynamicCache
         self.model = model.eval()
         self.lm = model.language_model
         self.tokenizer = tokenizer
         self.device = torch.device(device) if device is not None else self.lm.get_input_embeddings().weight.device
+        lm_type = str(getattr(getattr(self.lm, "config", None), "model_type", ""))
+        unsupported = {"mamba", "mamba2", "jamba", "lfm2", "lfm2_moe", "rwkv",
+                       "falcon_h1", "zamba", "zamba2", "bamba", "nemotron_h",
+                       "granitemoehybrid", "recurrent_gemma"}
+        if getattr(model, "is_diffusion_gemma", False) or lm_type in unsupported:
+            raise NotImplementedError(f"Streaming cache rollback is not validated for LM type {lm_type!r}")
         self._lock = threading.RLock()
         self.state = StreamingLMState(cache=DynamicCache())
         self._letter_ids: dict[str, int] = {}
@@ -54,16 +58,15 @@ class StreamingUltravoxSession:
         embeds = embeds.to(device=self.device, dtype=self.lm.get_input_embeddings().weight.dtype)
         past = self.state.sequence_length
         total = past + embeds.size(1)
-        attention_mask = torch.ones((1, total), dtype=torch.long, device=self.device)
-        cache_position = torch.arange(past, total, dtype=torch.long, device=self.device)
-        self.lm(inputs_embeds=embeds, attention_mask=attention_mask,
-                past_key_values=self.state.cache, cache_position=cache_position,
+        self.lm(inputs_embeds=embeds, attention_mask=torch.ones((1, total), dtype=torch.long, device=self.device),
+                past_key_values=self.state.cache,
+                cache_position=torch.arange(past, total, dtype=torch.long, device=self.device),
                 use_cache=True, return_dict=True)
         self.state.sequence_length = total
 
     @torch.inference_mode()
     def append_text(self, text: str) -> int:
-        """Append stable text tokens. Caller must enforce played-text-only policy."""
+        """Append stable text tokens; caller enforces that text has actually played."""
         if not text:
             return self.cache_length
         with self._lock:
@@ -93,7 +96,13 @@ class StreamingUltravoxSession:
     @torch.inference_mode()
     def query(self, question: Question, *, suffix: str = "",
               expected_state_version: Optional[int] = None) -> dict[str, Any]:
-        """Fork shared cache, read option-letter logits, then discard the fork."""
+        """Read option-letter logits on a temporary cache branch, then rollback.
+
+        The query holds the session lock while executing. DynamicCache.crop()
+        restores the committed prefix in-place, avoiding a full-prefix KV deepcopy
+        at every streaming decision tick. Cache classes without crop() use a
+        conservative deepcopy fallback.
+        """
         with self._lock:
             if self.state.closed:
                 raise RuntimeError("session is closed")
@@ -101,37 +110,44 @@ class StreamingUltravoxSession:
             if expected_state_version is not None and version != expected_state_version:
                 return {"stale": True, "state_version": version}
             base_len = self.state.sequence_length
+            prompt = question.render(list(range(len(question.options))))
+            ids = self._token_ids(prompt + suffix)
+            if ids.size(1) == 0:
+                raise ValueError("query prompt tokenized to an empty sequence")
+            q_len = int(ids.size(1))
+            q_embeds = self.lm.get_input_embeddings()(ids)
+            cache = self.state.cache
+            crop = getattr(cache, "crop", None)
+            if not callable(crop):
+                try:
+                    cache = copy.deepcopy(cache)
+                except Exception as exc:
+                    raise RuntimeError("Cache supports neither crop() nor deepcopy().") from exc
             try:
-                query_cache = copy.deepcopy(self.state.cache)
-            except Exception as exc:
-                raise RuntimeError("Transformers Cache is not deepcopyable; implement cache-specific fork.") from exc
-
-        prompt = question.render(list(range(len(question.options))))
-        ids = self._token_ids(prompt + suffix)
-        if ids.size(1) == 0:
-            raise ValueError("query prompt tokenized to an empty sequence")
-        q_len = int(ids.size(1))
-        q_embeds = self.lm.get_input_embeddings()(ids)
-        attention_mask = torch.ones((1, base_len + q_len), dtype=torch.long, device=self.device)
-        cache_position = torch.arange(base_len, base_len + q_len, dtype=torch.long, device=self.device)
-        output = self.lm(inputs_embeds=q_embeds, attention_mask=attention_mask,
-                         past_key_values=query_cache, cache_position=cache_position,
-                         use_cache=True, return_dict=True)
-        logits = output.logits[0, -1].float()
-        letter_ids = torch.tensor([self._letter_id(x) for x in question.letters()],
-                                  dtype=torch.long, device=logits.device)
-        probs = torch.softmax(logits.index_select(0, letter_ids), dim=-1)
-        with self._lock:
-            if self.state.state_version != version:
-                return {"stale": True, "state_version": self.state.state_version}
-        best = int(probs.argmax().item())
-        return {"stale": False, "state_version": version,
+                output = self.lm(
+                    inputs_embeds=q_embeds,
+                    attention_mask=torch.ones((1, base_len + q_len), dtype=torch.long, device=self.device),
+                    past_key_values=cache,
+                    cache_position=torch.arange(base_len, base_len + q_len, dtype=torch.long, device=self.device),
+                    use_cache=True, return_dict=True,
+                )
+                logits = output.logits[0, -1].float()
+                letter_ids = torch.tensor([self._letter_id(x) for x in question.letters()],
+                                          dtype=torch.long, device=logits.device)
+                probs = torch.softmax(logits.index_select(0, letter_ids), dim=-1)
+            finally:
+                if callable(crop):
+                    cache.crop(base_len)
+            best = int(probs.argmax().item())
+            return {
+                "stale": False, "state_version": version,
                 "query_cache_length": base_len + q_len,
                 "shared_cache_length": self.state.sequence_length,
                 "options": list(question.options),
                 "probabilities": probs.detach().cpu().tolist(),
                 "best_index": best, "best_option": question.options[best],
-                "confidence": float(probs.max().item())}
+                "confidence": float(probs.max().item()),
+            }
 
     def set_state_version(self, version: int) -> None:
         with self._lock:
