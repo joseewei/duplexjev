@@ -197,6 +197,21 @@ class Decider:
         lm_type = str(getattr(getattr(self.lm, "config", None), "model_type", ""))
         self.sequential_lm = lm_type in _SEQUENTIAL_LM
 
+    def create_streaming_session(self, *, prefix_text: str = ""):
+        """Create an append-only LLM session for incremental audio/text embeddings.
+
+        The session accepts projected WeNet embeddings via
+        append_audio_embeddings() and already-played stable text via append_text().
+        It uses a temporary deep-copied KV cache for each typed Query. The caller
+        remains responsible for providing the exact static prompt prefix used
+        during model training.
+        """
+        from .streaming.ultravox_session import StreamingUltravoxSession
+
+        return StreamingUltravoxSession(
+            self.model, self.tok, prefix_text=prefix_text, device=self.device
+        )
+
     # ------------------------------------------------------------------ loading
     @classmethod
     def from_pretrained(
