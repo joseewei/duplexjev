@@ -65,16 +65,33 @@ class StreamingUltravoxSession:
         self.state.sequence_length = total
 
     @torch.inference_mode()
-    def append_text(self, text: str) -> int:
-        """Append stable text tokens; caller enforces that text has actually played."""
-        if not text:
-            return self.cache_length
+    def append_text_tokens(self, token_ids: torch.Tensor) -> int:
+        """Append pre-tokenized text/control tokens without retokenizing a committed span.
+
+        Include the correct speaker/turn markers from the checkpoint's chat
+        template. The caller must ensure the content is already played.
+        """
+        if token_ids.ndim == 1:
+            token_ids = token_ids.unsqueeze(0)
+        if token_ids.ndim != 2 or token_ids.size(0) != 1:
+            raise ValueError("token_ids must have shape [T] or [1,T]")
         with self._lock:
             if self.state.closed:
                 raise RuntimeError("session is closed")
-            ids = self._token_ids(text)
-            self._forward_append(self.lm.get_input_embeddings()(ids))
+            token_ids = token_ids.to(self.device)
+            self._forward_append(self.lm.get_input_embeddings()(token_ids))
             return self.cache_length
+
+    @torch.inference_mode()
+    def append_text(self, text: str) -> int:
+        """Tokenize and append a stable played-text span.
+
+        Prefer append_text_tokens() when the caller already has chat-template
+        token IDs, including the required assistant role/turn markers.
+        """
+        if not text:
+            return self.cache_length
+        return self.append_text_tokens(self._token_ids(text))
 
     @torch.inference_mode()
     def append_audio_embeddings(self, embeddings: torch.Tensor) -> int:
