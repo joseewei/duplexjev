@@ -61,3 +61,31 @@ class DuplexStreamingRuntime:
 
     def should_respond(self, result: dict[str, Any]) -> bool:
         return result.get("query_kind") == QueryKind.TURN_END.value and result.get("answer") == "TURN_END" and float(result.get("confidence", 0)) >= self.turn_threshold
+
+def make_duplexjev_decision_fn(session, *, barge_question, turn_question, suffix: str = ""):
+    """Bind a StreamingUltravoxSession to the Runtime's decision_fn contract.
+
+    Configure barge_question options exactly as ("BARGE_IN", "NO_BARGE_IN")
+    and turn_question options as ("TURN_END", "TURN_CONTINUE"). The audio prefix
+    is already appended to the session incrementally and is intentionally not
+    replayed in this callback.
+    """
+    expected_barge = ("BARGE_IN", "NO_BARGE_IN")
+    expected_turn = ("TURN_END", "TURN_CONTINUE")
+    if tuple(barge_question.options) != expected_barge:
+        raise ValueError(f"barge_question.options must be {expected_barge}")
+    if tuple(turn_question.options) != expected_turn:
+        raise ValueError(f"turn_question.options must be {expected_turn}")
+
+    def decide(query_kind, audio_prefix, context_snapshot, state_version):
+        from .ultravox_session import StreamingUltravoxSession
+
+        session.set_state_version(state_version)
+        question = barge_question if query_kind == QueryKind.BARGE.value else turn_question
+        result = session.query(question, suffix=suffix, expected_state_version=state_version)
+        if result.get("stale"):
+            return {"answer": "STALE", "confidence": 0.0}
+        return {"answer": result["best_option"], "confidence": result["confidence"],
+                "probabilities": result["probabilities"]}
+
+    return decide
