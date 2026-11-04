@@ -70,7 +70,8 @@ class DuplexStreamingRuntime:
     def should_respond(self, result: dict[str, Any]) -> bool:
         return result.get("query_kind") == QueryKind.TURN_END.value and result.get("answer") == "TURN_END" and float(result.get("confidence", 0)) >= self.turn_threshold
 
-def make_duplexjev_decision_fn(session, *, barge_question, turn_question, suffix: str = ""):
+def make_duplexjev_decision_fn(session, *, barge_question, turn_question, suffix: str = "",
+                               played_text_encoder=None):
     """Bind a StreamingUltravoxSession to the Runtime's decision_fn contract.
 
     Configure barge_question options exactly as ("BARGE_IN", "NO_BARGE_IN")
@@ -96,6 +97,9 @@ def make_duplexjev_decision_fn(session, *, barge_question, turn_question, suffix
         return {"answer": result["best_option"], "confidence": result["confidence"],
                 "probabilities": result["probabilities"]}
 
-    decide.on_ai_played_text = session.append_text
+    decide.on_ai_played_text = (
+        (lambda text: session.append_text_tokens(played_text_encoder(text)))
+        if played_text_encoder is not None else session.append_text
+    )
     decide.on_audio_embeddings = session.append_audio_embeddings
     return decide
