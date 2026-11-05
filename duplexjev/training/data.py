@@ -33,7 +33,7 @@ class StreamingEventDataset(Dataset):
         if not isinstance(r["segments"],list) or not r["segments"]: raise ValueError(f"manifest line {line_no}: segments must be a non-empty list")
         has_audio=False; last_append_ms=-1; last_frame=0
         for s in r["segments"]:
-            append_ms=int(s.get("available_at_ms",s.get("played_at_ms",r["time_ms"])))
+            append_ms=int(s.get("append_at_ms",s.get("available_at_ms",s.get("played_at_ms",r["time_ms"]))))
             if append_ms<last_append_ms: raise ValueError(f"manifest line {line_no}: segments are not in append-time order")
             last_append_ms=append_ms
             if s.get("type")=="audio":
@@ -44,7 +44,7 @@ class StreamingEventDataset(Dataset):
                 if start<last_frame: raise ValueError(f"manifest line {line_no}: audio frames are duplicated or out of order")
                 last_frame=end
             elif s.get("type")=="text":
-                if int(s.get("played_at_ms",r["time_ms"]))>int(r["time_ms"]): raise ValueError(f"manifest line {line_no}: future/unplayed assistant text leaks into prefix")
+                if s.get("source")=="static":\n                    if append_ms>int(r["time_ms"]): raise ValueError(f"manifest line {line_no}: future static prompt leaks into prefix")\n                elif int(s.get("played_at_ms",r["time_ms"]))>int(r["time_ms"]): raise ValueError(f"manifest line {line_no}: future/unplayed assistant text leaks into prefix")
                 if not s.get("token_ids"): raise ValueError(f"manifest line {line_no}: text segment needs token_ids")
             else: raise ValueError(f"manifest line {line_no}: segment type must be audio or text")
         if not has_audio: raise ValueError(f"manifest line {line_no}: every decision event must include visible user audio")
