@@ -109,7 +109,9 @@ The trainer saves connector/query weights in streaming_adapter.pt and LoRA weigh
 Load the adapter checkpoint and apply the connector state to the same projector architecture used by StreamingConnector. Load query vectors into StreamingUltravoxSession:
 
 ~~~python
-from duplexjev.streaming import load_streaming_adapter
+from duplexjev.streaming import build_streaming_projector, load_streaming_adapter
+projector = build_streaming_projector(encoder_dim=ACTUAL_DIM, llm_dim=ACTUAL_LM_DIM,
+                                      stack_factor=2)
 load_streaming_adapter(session, projector,
     "runs/stage4/best/streaming_adapter.pt",
     lora_path="runs/stage4/best/lora")
