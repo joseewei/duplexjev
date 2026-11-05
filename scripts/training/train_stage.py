@@ -15,20 +15,31 @@ def seed_all(seed):
     if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
 
 def evaluate(model, loader):
-    model.eval(); n={}; ok={}
+    model.eval(); stats={}
     with torch.no_grad():
         for rows in loader:
             pred=model(rows).argmax(-1).cpu().tolist()
             for r,p in zip(rows,pred):
-                k=r["query"]; n[k]=n.get(k,0)+1
-                ok[k]=ok.get(k,0)+int(p==(1-int(r["label"])))
-    return {k:{"n":n[k],"accuracy":ok[k]/n[k]} for k in n}
+                task=r["query"]; s=stats.setdefault(task,{"tp":0,"fp":0,"tn":0,"fn":0})
+                actual=int(r["label"])==1; predicted=(p==0)  # logit index 0 is positive class B
+                if actual and predicted: s["tp"]+=1
+                elif not actual and predicted: s["fp"]+=1
+                elif not actual and not predicted: s["tn"]+=1
+                else: s["fn"]+=1
+    out={}
+    for task,s in stats.items():
+        tp,fp,tn,fn=(s[k] for k in ("tp","fp","tn","fn"))
+        precision=tp/max(1,tp+fp); recall=tp/max(1,tp+fn)
+        out[task]={**s,"accuracy":(tp+tn)/max(1,tp+fp+tn+fn),
+                   "precision":precision,"recall":recall,
+                   "f1":2*precision*recall/max(1e-12,precision+recall)}
+    return out
 
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--manifest",required=True); ap.add_argument("--llm",required=True)
     ap.add_argument("--encoder-dim",type=int,required=True); ap.add_argument("--stack-factor",type=int,default=2)
-    ap.add_argument("--stage",choices=["connector","lora","joint","robustness"],required=True)
+    ap.add_argument("--stage",choices=["connector","lora","joint","robustness"],required=True); ap.add_argument("--tasks",default="BARGE,TURN_END")
     ap.add_argument("--output-dir",required=True); ap.add_argument("--init-adapter"); ap.add_argument("--init-lora")
     ap.add_argument("--epochs",type=int,default=2); ap.add_argument("--batch-size",type=int,default=2)
     ap.add_argument("--lr",type=float,default=1e-4); ap.add_argument("--lora-lr",type=float,default=2e-5)
@@ -55,7 +66,7 @@ def main():
     if a.gradient_checkpointing and hasattr(model.lm,"gradient_checkpointing_enable"):
         model.lm.gradient_checkpointing_enable()
     model.to(device)
-    tr=StreamingEventDataset(a.manifest,"train"); va=StreamingEventDataset(a.manifest,"valid")
+    tr=StreamingEventDataset(a.manifest,"train"); va=StreamingEventDataset(a.manifest,"valid")\n    selected={x.strip() for x in a.tasks.split(",") if x.strip()}\n    if not selected or not selected.issubset({"BARGE","TURN_END"}): raise ValueError("--tasks must be BARGE,TURN_END or a subset")\n    tr.rows=[r for r in tr.rows if r["query"] in selected]; va.rows=[r for r in va.rows if r["query"] in selected]\n    if not tr.rows or not va.rows: raise ValueError(f"No train/valid events after task filter: {selected}")
     trl=DataLoader(tr,batch_size=a.batch_size,shuffle=True,num_workers=a.num_workers,collate_fn=lambda x:x)
     val=DataLoader(va,batch_size=a.batch_size,shuffle=False,num_workers=a.num_workers,collate_fn=lambda x:x)
     lp=[p for n,p in model.named_parameters() if p.requires_grad and "lora_" in n]
@@ -77,7 +88,7 @@ def main():
             loss.backward(); torch.nn.utils.clip_grad_norm_(trainable,a.max_grad_norm); opt.step()
             total+=float(loss.detach()); steps+=1
         metrics=evaluate(model,val)
-        score=sum(v["accuracy"] for v in metrics.values())/max(1,len(metrics))
+        score=sum(v["f1"] for v in metrics.values())/max(1,len(metrics))
         report={"epoch":ep+1,"train_loss":total/max(1,steps),"valid":metrics,"macro_accuracy":score}
         print(json.dumps(report,ensure_ascii=False))
         (out/f"epoch_{ep+1}.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
