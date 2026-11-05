@@ -140,3 +140,19 @@ For NVIDIA V100, use FP16 (the stage launchers default to fp16 and enable GradSc
 ### Custom LLM loader
 
 If the serving checkpoint is a custom Ultravox/VL model rather than a standalone AutoModelForCausalLM, pass --lm-factory module:function. The factory is called as factory(llm_path, dtype=..., device=...) and must return the exact serving language_model module plus its tokenizer: (language_model, tokenizer). This avoids training against a merely dimension-compatible but architecturally different LM.
+
+
+## 6. Held-out test evaluation
+
+Do not select checkpoints using the test split. After choosing the best checkpoint on validation, run:
+
+~~~bash
+python scripts/training/evaluate_checkpoint.py \
+  --manifest data/manifest/events.jsonl --llm /models/base-llm \
+  --encoder-dim ACTUAL_DIM --stack-factor 2 \
+  --adapter runs/stage4/best/streaming_adapter.pt \
+  --lora runs/stage4/best/lora --precision fp16 \
+  --output runs/stage4/test_metrics.json
+~~~
+
+The report includes per-task confusion counts, precision, recall, F1, accuracy, and model-forward latency. Latency is measured on cached feature tensors and excludes feature extraction, network transport, audio buffering, and runtime scheduling.
