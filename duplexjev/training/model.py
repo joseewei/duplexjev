@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any
 import torch
 from torch import nn
+from ..streaming.connector import build_streaming_projector
 
 class StreamingDecisionModel(nn.Module):
     """Frozen causal LM + trainable streaming connector + task-specific query vectors.
@@ -15,8 +16,8 @@ class StreamingDecisionModel(nn.Module):
         self.stack_factor, self.encoder_dim = int(stack_factor), int(encoder_dim)
         self.hidden_size = int(getattr(lm.config, "hidden_size", getattr(getattr(lm.config, "text_config", None), "hidden_size", 0)))
         if not self.hidden_size: raise ValueError("Cannot infer LM hidden_size from checkpoint config")
-        mid = connector_hidden_dim or self.hidden_size
-        self.connector = nn.Sequential(nn.LayerNorm(self.encoder_dim * self.stack_factor), nn.Linear(self.encoder_dim * self.stack_factor, mid), nn.GELU(), nn.Linear(mid, self.hidden_size))
+        self.connector = build_streaming_projector(self.encoder_dim, self.hidden_size,
+            stack_factor=self.stack_factor, hidden_dim=connector_hidden_dim)
         self.query_embeddings = nn.Parameter(torch.empty(2, self.hidden_size))
         nn.init.normal_(self.query_embeddings, mean=0.0, std=0.02)
         self.input_embeddings = lm.get_input_embeddings()
