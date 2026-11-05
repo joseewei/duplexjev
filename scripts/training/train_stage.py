@@ -66,7 +66,11 @@ def main():
     if a.gradient_checkpointing and hasattr(model.lm,"gradient_checkpointing_enable"):
         model.lm.gradient_checkpointing_enable()
     model.to(device)
-    tr=StreamingEventDataset(a.manifest,"train"); va=StreamingEventDataset(a.manifest,"valid")\n    selected={x.strip() for x in a.tasks.split(",") if x.strip()}\n    if not selected or not selected.issubset({"BARGE","TURN_END"}): raise ValueError("--tasks must be BARGE,TURN_END or a subset")\n    tr.rows=[r for r in tr.rows if r["query"] in selected]; va.rows=[r for r in va.rows if r["query"] in selected]\n    if not tr.rows or not va.rows: raise ValueError(f"No train/valid events after task filter: {selected}")
+    tr=StreamingEventDataset(a.manifest,"train"); va=StreamingEventDataset(a.manifest,"valid")
+    selected={x.strip() for x in a.tasks.split(",") if x.strip()}
+    if not selected or not selected.issubset({"BARGE","TURN_END"}): raise ValueError("--tasks must be BARGE,TURN_END or a subset")
+    tr.rows=[r for r in tr.rows if r["query"] in selected]; va.rows=[r for r in va.rows if r["query"] in selected]
+    if not tr.rows or not va.rows: raise ValueError(f"No train/valid events after task filter: {selected}")
     trl=DataLoader(tr,batch_size=a.batch_size,shuffle=True,num_workers=a.num_workers,collate_fn=lambda x:x)
     val=DataLoader(va,batch_size=a.batch_size,shuffle=False,num_workers=a.num_workers,collate_fn=lambda x:x)
     lp=[p for n,p in model.named_parameters() if p.requires_grad and "lora_" in n]
