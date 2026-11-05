@@ -43,16 +43,19 @@ class StreamingEventDataset(Dataset):
             last_append_ms=append_ms
             if s.get("type")=="audio":
                 has_audio=True
+                if "available_at_ms" not in s: raise ValueError(f"manifest line {line_no}: audio segment requires available_at_ms")
                 start,end=int(s["start_frame"]),int(s["end_frame"])
                 if not (0<=start<end): raise ValueError(f"manifest line {line_no}: invalid audio frame range")
-                if int(s.get("available_at_ms",r["time_ms"]))>int(r["time_ms"]): raise ValueError(f"manifest line {line_no}: future audio leaks into query prefix")
+                if int(s["available_at_ms"])>int(r["time_ms"]): raise ValueError(f"manifest line {line_no}: future audio leaks into query prefix")
                 if start<last_frame: raise ValueError(f"manifest line {line_no}: audio frames are duplicated or out of order")
                 last_frame=end
             elif s.get("type")=="text":
                 if s.get("source")=="static":
+                    if "append_at_ms" not in s: raise ValueError(f"manifest line {line_no}: static text requires append_at_ms")
                     if append_ms>int(r["time_ms"]): raise ValueError(f"manifest line {line_no}: future static prompt leaks into prefix")
-                elif "played_at_ms" not in s:\n                    raise ValueError(f"manifest line {line_no}: assistant text requires played_at_ms")\n                elif int(s["played_at_ms"])>int(r["time_ms"]):
-                    raise ValueError(f"manifest line {line_no}: future/unplayed assistant text leaks into prefix")
+                else:
+                    if "played_at_ms" not in s: raise ValueError(f"manifest line {line_no}: assistant text requires played_at_ms")
+                    if int(s["played_at_ms"])>int(r["time_ms"]): raise ValueError(f"manifest line {line_no}: future/unplayed assistant text leaks into prefix")
                 if not s.get("token_ids"): raise ValueError(f"manifest line {line_no}: text segment needs token_ids")
             else:
                 raise ValueError(f"manifest line {line_no}: segment type must be audio or text")
