@@ -93,7 +93,7 @@ def main():
             total+=float(loss.detach()); steps+=1
         metrics=evaluate(model,val)
         score=sum(v["f1"] for v in metrics.values())/max(1,len(metrics))
-        report={"epoch":ep+1,"train_loss":total/max(1,steps),"valid":metrics,"macro_accuracy":score}
+        report={"epoch":ep+1,"train_loss":total/max(1,steps),"valid":metrics,"macro_f1":score}
         print(json.dumps(report,ensure_ascii=False))
         (out/f"epoch_{ep+1}.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
         meta={"stage":a.stage,"epoch":ep+1,"encoder_dim":a.encoder_dim,"stack_factor":a.stack_factor,"llm":a.llm,"valid":metrics}
