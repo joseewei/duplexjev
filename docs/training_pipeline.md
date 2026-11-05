@@ -108,9 +108,10 @@ The trainer saves connector/query weights in streaming_adapter.pt and LoRA weigh
 Load the adapter checkpoint and apply the connector state to the same projector architecture used by StreamingConnector. Load query vectors into StreamingUltravoxSession:
 
 ~~~python
-ckpt = torch.load("runs/stage4/best/streaming_adapter.pt", map_location="cpu", weights_only=True)
-projector.load_state_dict(ckpt["connector"])
-session.set_query_embeddings(ckpt["query_embeddings"])
+from duplexjev.streaming import load_streaming_adapter
+load_streaming_adapter(session, projector,
+    "runs/stage4/best/streaming_adapter.pt",
+    lora_path="runs/stage4/best/lora")
 ~~~
 
 Then bind the runtime with positive-first options:
