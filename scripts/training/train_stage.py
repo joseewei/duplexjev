@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse, json, random
+import argparse, importlib, json, random
 from pathlib import Path
 import numpy as np
 import torch
@@ -37,7 +37,7 @@ def evaluate(model, loader):
 
 def main():
     ap=argparse.ArgumentParser()
-    ap.add_argument("--manifest",required=True); ap.add_argument("--llm",required=True)
+    ap.add_argument("--manifest",required=True); ap.add_argument("--llm",required=True); ap.add_argument("--lm-factory",help="optional module:function returning (language_model, tokenizer)")
     ap.add_argument("--encoder-dim",type=int,required=True); ap.add_argument("--stack-factor",type=int,default=2)
     ap.add_argument("--stage",choices=["connector","lora","joint","robustness"],required=True); ap.add_argument("--tasks",default="BARGE,TURN_END")
     ap.add_argument("--output-dir",required=True); ap.add_argument("--init-adapter"); ap.add_argument("--init-lora")
@@ -51,8 +51,13 @@ def main():
     a=ap.parse_args(); seed_all(a.seed)
     device="cuda" if torch.cuda.is_available() else "cpu"
     dtype={"fp32":torch.float32,"fp16":torch.float16,"bf16":torch.bfloat16}[a.precision]
-    tok=AutoTokenizer.from_pretrained(a.llm,trust_remote_code=True)
-    lm=AutoModelForCausalLM.from_pretrained(a.llm,trust_remote_code=True,torch_dtype=dtype)
+    if a.lm_factory:
+        module,name=a.lm_factory.split(":",1)
+        factory=getattr(importlib.import_module(module),name)
+        lm,tok=factory(a.llm,dtype=dtype,device=device)
+    else:
+        tok=AutoTokenizer.from_pretrained(a.llm,trust_remote_code=True)
+        lm=AutoModelForCausalLM.from_pretrained(a.llm,trust_remote_code=True,torch_dtype=dtype)
     if a.init_lora:
         lm=PeftModel.from_pretrained(lm,a.init_lora,is_trainable=True)
     lm.to(device)
