@@ -51,7 +51,7 @@ class StreamingEventDataset(Dataset):
             elif s.get("type")=="text":
                 if s.get("source")=="static":
                     if append_ms>int(r["time_ms"]): raise ValueError(f"manifest line {line_no}: future static prompt leaks into prefix")
-                elif int(s.get("played_at_ms",r["time_ms"]))>int(r["time_ms"]):
+                elif "played_at_ms" not in s:\n                    raise ValueError(f"manifest line {line_no}: assistant text requires played_at_ms")\n                elif int(s["played_at_ms"])>int(r["time_ms"]):
                     raise ValueError(f"manifest line {line_no}: future/unplayed assistant text leaks into prefix")
                 if not s.get("token_ids"): raise ValueError(f"manifest line {line_no}: text segment needs token_ids")
             else:
