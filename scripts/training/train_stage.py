@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse, importlib, json, random
+import argparse, importlib, json, random\nfrom collections import Counter
 from pathlib import Path
 import numpy as np
 import torch
@@ -58,7 +58,7 @@ def main():
     ap.add_argument("--precision",choices=["fp32","fp16","bf16"],default="fp16"); ap.add_argument("--gradient-checkpointing",action="store_true")
     a=ap.parse_args(); seed_all(a.seed)
     device="cuda" if torch.cuda.is_available() else "cpu"
-    dtype={"fp32":torch.float32,"fp16":torch.float16,"bf16":torch.bfloat16}[a.precision]
+    if device=="cpu" and a.precision!="fp32": raise ValueError("CPU training requires --precision fp32")\n    if device=="cuda" and a.precision=="bf16" and not torch.cuda.is_bf16_supported(): raise ValueError("This GPU does not support BF16; use --precision fp16")\n    dtype={"fp32":torch.float32,"fp16":torch.float16,"bf16":torch.bfloat16}[a.precision]
     if a.lm_factory:
         module,name=a.lm_factory.split(":",1)
         factory=getattr(importlib.import_module(module),name)
@@ -83,7 +83,7 @@ def main():
     selected={x.strip() for x in a.tasks.split(",") if x.strip()}
     if not selected or not selected.issubset({"BARGE","TURN_END"}): raise ValueError("--tasks must be BARGE,TURN_END or a subset")
     tr.rows=[r for r in tr.rows if r["query"] in selected]; va.rows=[r for r in va.rows if r["query"] in selected]
-    if not tr.rows or not va.rows: raise ValueError(f"No train/valid events after task filter: {selected}")
+    if not tr.rows or not va.rows: raise ValueError(f"No train/valid events after task filter: {selected}")\n    class_counts=Counter((r["query"],int(r["label"])) for r in tr.rows)\n    missing=[(task,label) for task in selected for label in (0,1) if class_counts[(task,label)]==0]\n    if missing: raise ValueError(f"Training split is missing task/class groups: {missing}")\n    sample_weights=[1.0/class_counts[(r["query"],int(r["label"]))] for r in tr.rows]
     trl=DataLoader(tr,batch_size=a.batch_size,shuffle=True,num_workers=a.num_workers,collate_fn=lambda x:x)
     val=DataLoader(va,batch_size=a.batch_size,shuffle=False,num_workers=a.num_workers,collate_fn=lambda x:x)
     lp=[p for n,p in model.named_parameters() if p.requires_grad and "lora_" in n]
