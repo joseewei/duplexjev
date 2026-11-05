@@ -66,7 +66,7 @@ Stage 1 — connector warm-up. Freeze the LLM and train the MLP connector plus t
 ~~~bash
 python scripts/training/train_stage.py --manifest data/manifest/events.jsonl \
   --llm /models/base-llm --encoder-dim ACTUAL_DIM --stack-factor 2 \
-  --stage connector --epochs 3 --batch-size 2 --lr 1e-4 --bf16 \
+  --stage connector --epochs 3 --batch-size 2 --lr 1e-4 --precision fp16 \
   --output-dir runs/stage1
 ~~~
 
@@ -76,7 +76,7 @@ Stage 2 — task adaptation. Initialize from Stage 1; train connector, query vec
 python scripts/training/train_stage.py --manifest data/manifest/events.jsonl \
   --llm /models/base-llm --encoder-dim ACTUAL_DIM --stack-factor 2 \
   --stage lora --tasks BARGE --init-adapter runs/stage1/best/streaming_adapter.pt \
-  --epochs 2 --batch-size 2 --lr 5e-5 --lora-lr 2e-5 --bf16 \
+  --epochs 2 --batch-size 2 --lr 5e-5 --lora-lr 2e-5 --precision fp16 \
   --output-dir runs/stage2
 ~~~
 
@@ -87,7 +87,7 @@ python scripts/training/train_stage.py --manifest data/manifest/events.jsonl \
   --llm /models/base-llm --encoder-dim ACTUAL_DIM --stack-factor 2 \
   --stage joint --tasks BARGE,TURN_END --init-adapter runs/stage2/best/streaming_adapter.pt \
   --init-lora runs/stage2/best/lora \
-  --epochs 2 --batch-size 2 --lr 2e-5 --lora-lr 1e-5 --bf16 \
+  --epochs 2 --batch-size 2 --lr 2e-5 --lora-lr 1e-5 --precision fp16 \
   --output-dir runs/stage3
 ~~~
 
@@ -98,7 +98,7 @@ python scripts/training/train_stage.py --manifest data/manifest/robustness_event
   --llm /models/base-llm --encoder-dim ACTUAL_DIM --stack-factor 2 \
   --stage robustness --tasks BARGE,TURN_END --init-adapter runs/stage3/best/streaming_adapter.pt \
   --init-lora runs/stage3/best/lora --epochs 1 --batch-size 2 \
-  --lr 1e-5 --lora-lr 5e-6 --bf16 --output-dir runs/stage4
+  --lr 1e-5 --lora-lr 5e-6 --precision fp16 --output-dir runs/stage4
 ~~~
 
 The trainer saves connector/query weights in streaming_adapter.pt and LoRA weights in the lora subdirectory. Best and last checkpoints are saved separately. Validation currently reports per-task accuracy; before production, add per-class precision/recall/F1, false interruption rate, missed interruption rate, and latency.
@@ -133,3 +133,5 @@ With trained query vectors, the runtime uses one learned query embedding per dec
 - Audio and played-text segments must preserve the actual append order. Audio frames are included only once they have been emitted by the streaming encoder/connector; AI text is included only after playback confirmation.
 - This implementation uses event-level examples that reference complete recording feature caches. Do not randomly split events from the same recording across datasets.
 - No claim of end-to-end GPU training success is made until smoke tests run against the actual checkpoint, adapter, tokenizer and target hardware.
+
+For NVIDIA V100, use FP16 (the stage launchers default to fp16 and enable GradScaler). Use BF16 only on hardware that supports it; use fp32 for a numerical baseline.
