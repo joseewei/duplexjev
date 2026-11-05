@@ -69,7 +69,7 @@ class StreamingDecisionModel(nn.Module):
         for p in self.lm.parameters(): p.requires_grad_(False)
         for p in self.connector.parameters(): p.requires_grad_(True)
         self.query_embeddings.requires_grad_(True)
-        if stage in ("lora","joint"):
+        if stage in ("lora","joint","robustness") and not getattr(self.lm,"peft_config",None):
             try: from peft import LoraConfig,get_peft_model
             except ImportError as e: raise RuntimeError("Install peft for LoRA stages: pip install peft") from e
             cfg=LoraConfig(r=lora_rank,lora_alpha=lora_alpha,lora_dropout=lora_dropout,target_modules=target_modules or ["q_proj","k_proj","v_proj","o_proj"],bias="none",task_type="CAUSAL_LM")
