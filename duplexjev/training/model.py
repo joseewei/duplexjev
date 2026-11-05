@@ -75,6 +75,9 @@ class StreamingDecisionModel(nn.Module):
             cfg=LoraConfig(r=lora_rank,lora_alpha=lora_alpha,lora_dropout=lora_dropout,target_modules=target_modules or ["q_proj","k_proj","v_proj","o_proj"],bias="none",task_type="CAUSAL_LM")
             self.lm=get_peft_model(self.lm,cfg)
             self.input_embeddings=self.lm.get_input_embeddings()
+        elif stage in ("lora","joint","robustness") and getattr(self.lm,"peft_config",None):
+            for name,p in self.lm.named_parameters():
+                if "lora_" in name: p.requires_grad_(True)
         return [p for p in self.parameters() if p.requires_grad]
 
     def save_trainable(self, output_dir: str, metadata: dict[str,Any]):
