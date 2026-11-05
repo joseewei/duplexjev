@@ -122,7 +122,7 @@ def main():
     missing = [(task, label) for task in selected for label in (0, 1) if class_counts[(task, label)] == 0]
     if missing:
         raise ValueError(f"Training split is missing task/class groups: {missing}")
-    group_weights = {key: 1.0 / count for key, count in class_counts.items()}
+    group_weights = {key: len(train_ds) / (len(class_counts) * count) for key, count in class_counts.items()}
 
     train_loader = DataLoader(train_ds, batch_size=a.batch_size, shuffle=True,
                               num_workers=a.num_workers, collate_fn=lambda x: x)
@@ -156,7 +156,7 @@ def main():
                                 enabled=(device == "cuda" and a.precision != "fp32")):
                 logits = model(rows)
                 per_item = torch.nn.functional.cross_entropy(logits, targets, reduction="none")
-                loss = (per_item * weights).sum() / weights.sum().clamp_min(1e-8)
+                loss = (per_item * weights).mean()
             if scaler.is_enabled():
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
