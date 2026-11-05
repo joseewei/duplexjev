@@ -43,11 +43,11 @@ class StreamingEventDataset(Dataset):
         for s in r["segments"]:
             if s.get("type") == "audio":
                 if not (0 <= int(s["start_frame"]) < int(s["end_frame"])): raise ValueError(f"manifest line {line_no}: invalid audio frame range")
-                if int(s.get("available_at_ms", r["time_ms"])) > int(r["time_ms"]): raise ValueError(f"manifest line {line_no}: future audio leaks into query prefix")
+                if int(s.get("available_at_ms", r["time_ms"])) > int(r["time_ms"]): raise ValueError(f"manifest line {line_no}: future audio leaks into query prefix")\n                if int(s["start_frame"]) < last_frame: raise ValueError(f"manifest line {line_no}: audio feature frames are duplicated or out of order")\n                last_frame=int(s["end_frame"])
             elif s.get("type") == "text":
                 if int(s.get("played_at_ms", r["time_ms"])) > int(r["time_ms"]): raise ValueError(f"manifest line {line_no}: future/unplayed assistant text leaks into prefix")
                 if not s.get("token_ids"): raise ValueError(f"manifest line {line_no}: text segment needs token_ids")
-            else: raise ValueError(f"manifest line {line_no}: segment type must be audio or text")
+            else: raise ValueError(f"manifest line {line_no}: segment type must be audio or text")\n        if not has_audio: raise ValueError(f"manifest line {line_no}: every decision event must include visible user audio")
 
     def __len__(self): return len(self.rows)
 
