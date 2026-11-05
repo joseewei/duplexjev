@@ -135,3 +135,8 @@ With trained query vectors, the runtime uses one learned query embedding per dec
 - No claim of end-to-end GPU training success is made until smoke tests run against the actual checkpoint, adapter, tokenizer and target hardware.
 
 For NVIDIA V100, use FP16 (the stage launchers default to fp16 and enable GradScaler). Use BF16 only on hardware that supports it; use fp32 for a numerical baseline.
+
+
+### Custom LLM loader
+
+If the serving checkpoint is a custom Ultravox/VL model rather than a standalone AutoModelForCausalLM, pass --lm-factory module:function. The factory is called as factory(llm_path, dtype=..., device=...) and must return the exact serving language_model module plus its tokenizer: (language_model, tokenizer). This avoids training against a merely dimension-compatible but architecturally different LM.
