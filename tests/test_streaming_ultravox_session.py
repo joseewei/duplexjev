@@ -54,3 +54,16 @@ def test_query_cache_is_rolled_back_and_prefix_is_append_only():
     assert session.state.cache.get_seq_length() == prefix_len
     session.append_text("你好")
     assert session.cache_length > prefix_len
+
+
+def test_learned_query_embedding_uses_b_a_readout_and_rolls_back():
+    model = FakeUltravox()
+    session = StreamingUltravoxSession(model, CharTokenizer())
+    session.append_audio_embeddings(torch.randn(1, 2, 4))
+    session.set_query_embeddings(torch.randn(2, 4))
+    prefix_len = session.cache_length
+    q = Question(id="barge", text="ignored when using learned query", options=["BARGE_IN", "NO_BARGE_IN"], lang="en")
+    result = session.query(q, query_embedding=session.query_embeddings[0], answer_letters=("B", "A"))
+    assert result["options"] == ["BARGE_IN", "NO_BARGE_IN"]
+    assert result["shared_cache_length"] == prefix_len
+    assert session.state.cache.get_seq_length() == prefix_len
