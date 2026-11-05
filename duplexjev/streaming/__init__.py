@@ -4,9 +4,10 @@ from .connector import StreamingConnector
 from .runtime import DuplexStreamingRuntime, RuntimeState, QueryKind, make_duplexjev_decision_fn
 from .wenet_encoder import WenetStreamingEncoder
 from .ultravox_session import StreamingUltravoxSession, StreamingLMState
+from .checkpoint import load_streaming_adapter
 
 __all__ = [
     "StreamingContext", "StreamingConnector", "DuplexStreamingRuntime",
     "RuntimeState", "QueryKind", "make_duplexjev_decision_fn",
-    "WenetStreamingEncoder", "StreamingUltravoxSession", "StreamingLMState",
+    "WenetStreamingEncoder", "StreamingUltravoxSession", "StreamingLMState", "load_streaming_adapter",
 ]
