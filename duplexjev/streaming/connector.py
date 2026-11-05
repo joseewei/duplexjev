@@ -47,7 +47,7 @@ class StreamingConnector:
             return None
         missing = self.stack_factor - pending.size(1)
         padded = torch.cat((pending, pending.new_zeros((1, missing, pending.size(-1)))), dim=1)
-        out = self.projector(padded.reshape(1, 1, -1))
+        param = next(self.projector.parameters())\n        padded = padded.to(device=param.device, dtype=param.dtype)\n        out = self.projector(padded.reshape(1, 1, -1))
         if isinstance(out, tuple):
             out = out[0]
         state["pending"] = None
