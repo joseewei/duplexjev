@@ -156,3 +156,6 @@ python scripts/training/evaluate_checkpoint.py \
 ~~~
 
 The report includes per-task confusion counts, precision, recall, F1, accuracy, and model-forward latency. Latency is measured on cached feature tensors and excludes feature extraction, network transport, audio buffering, and runtime scheduling.
+
+
+The first text segment in each event prefix must include the exact static system/chat-template prefix used to initialize the serving session (including role markers). Subsequent text segments represent only stable, already-played assistant spans and their required role/turn markers. Do not include the natural-language Question body when using the learned virtual Query vector: the task identity is carried by that one trainable embedding.
