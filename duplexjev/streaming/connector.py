@@ -53,3 +53,17 @@ class StreamingConnector:
         state["pending"] = None
         state["tokens_emitted"] += int(out.size(1))
         return out
+
+
+def build_streaming_projector(encoder_dim: int, llm_dim: int, *, stack_factor: int = 2,
+                              hidden_dim: int | None = None) -> torch.nn.Module:
+    """Create the exact MLP projector architecture used by the training pipeline."""
+    if encoder_dim <= 0 or llm_dim <= 0 or stack_factor <= 0:
+        raise ValueError("encoder_dim, llm_dim and stack_factor must be positive")
+    mid = int(hidden_dim or llm_dim)
+    return torch.nn.Sequential(
+        torch.nn.LayerNorm(int(encoder_dim) * int(stack_factor)),
+        torch.nn.Linear(int(encoder_dim) * int(stack_factor), mid),
+        torch.nn.GELU(),
+        torch.nn.Linear(mid, int(llm_dim)),
+    )
