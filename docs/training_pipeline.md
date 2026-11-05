@@ -18,6 +18,7 @@ Example event row:
   "label": 1,
   "feature_file": "../features/call_0001.pt",
   "segments": [
+    {"type": "text", "source": "static", "append_at_ms": 0, "token_ids": [151644, 4321, 151645]},
     {"type": "text", "played_at_ms": 300, "token_ids": [151644, 1234, 151645]},
     {"type": "audio", "start_frame": 0, "end_frame": 28, "available_at_ms": 1200}
   ]
