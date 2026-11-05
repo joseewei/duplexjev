@@ -14,6 +14,14 @@ def seed_all(seed):
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
     if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
 
+def train_mode(model):
+    model.train()
+    # Keep the frozen base LM deterministic; only LoRA dropout stays in train mode.
+    model.lm.eval()
+    for name,module in model.lm.named_modules():
+        if "lora_dropout" in name: module.train()
+    model.connector.train()
+
 def evaluate(model, loader):
     model.eval(); stats={}
     with torch.no_grad():
@@ -89,7 +97,7 @@ def main():
     amp_dtype={"fp16":torch.float16,"bf16":torch.bfloat16}.get(a.precision,torch.float32)
     out=Path(a.output_dir); out.mkdir(parents=True,exist_ok=True); best=-1.0
     for ep in range(a.epochs):
-        model.train(); total=0.0; steps=0
+        train_mode(model); total=0.0; steps=0
         for rows in trl:
             # Training logits are ordered [positive(B), negative(A)]; label 1=positive.
             targets=torch.tensor([1-int(r["label"]) for r in rows],device=device)
