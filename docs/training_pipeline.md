@@ -75,7 +75,7 @@ Stage 2 — task adaptation. Initialize from Stage 1; train connector, query vec
 ~~~bash
 python scripts/training/train_stage.py --manifest data/manifest/events.jsonl \
   --llm /models/base-llm --encoder-dim ACTUAL_DIM --stack-factor 2 \
-  --stage lora --init-adapter runs/stage1/best/streaming_adapter.pt \
+  --stage lora --tasks BARGE --init-adapter runs/stage1/best/streaming_adapter.pt \
   --epochs 2 --batch-size 2 --lr 5e-5 --lora-lr 2e-5 --bf16 \
   --output-dir runs/stage2
 ~~~
@@ -85,7 +85,7 @@ Stage 3 — joint multi-task refinement. Resume both the Stage 2 connector/query
 ~~~bash
 python scripts/training/train_stage.py --manifest data/manifest/events.jsonl \
   --llm /models/base-llm --encoder-dim ACTUAL_DIM --stack-factor 2 \
-  --stage joint --init-adapter runs/stage2/best/streaming_adapter.pt \
+  --stage joint --tasks BARGE,TURN_END --init-adapter runs/stage2/best/streaming_adapter.pt \
   --init-lora runs/stage2/best/lora \
   --epochs 2 --batch-size 2 --lr 2e-5 --lora-lr 1e-5 --bf16 \
   --output-dir runs/stage3
@@ -96,7 +96,7 @@ Stage 4 — streaming robustness. Build a separate manifest with additional real
 ~~~bash
 python scripts/training/train_stage.py --manifest data/manifest/robustness_events.jsonl \
   --llm /models/base-llm --encoder-dim ACTUAL_DIM --stack-factor 2 \
-  --stage robustness --init-adapter runs/stage3/best/streaming_adapter.pt \
+  --stage robustness --tasks BARGE,TURN_END --init-adapter runs/stage3/best/streaming_adapter.pt \
   --init-lora runs/stage3/best/lora --epochs 1 --batch-size 2 \
   --lr 1e-5 --lora-lr 5e-6 --bf16 --output-dir runs/stage4
 ~~~
