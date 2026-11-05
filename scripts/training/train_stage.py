@@ -47,10 +47,10 @@ def main():
     ap.add_argument("--lora-rank",type=int,default=16); ap.add_argument("--lora-alpha",type=int,default=32)
     ap.add_argument("--target-modules",default="q_proj,k_proj,v_proj,o_proj")
     ap.add_argument("--num-workers",type=int,default=0); ap.add_argument("--seed",type=int,default=42)
-    ap.add_argument("--bf16",action="store_true"); ap.add_argument("--gradient-checkpointing",action="store_true")
+    ap.add_argument("--precision",choices=["fp32","fp16","bf16"],default="fp16"); ap.add_argument("--gradient-checkpointing",action="store_true")
     a=ap.parse_args(); seed_all(a.seed)
     device="cuda" if torch.cuda.is_available() else "cpu"
-    dtype=torch.bfloat16 if a.bf16 else torch.float32
+    dtype={"fp32":torch.float32,"fp16":torch.float16,"bf16":torch.bfloat16}[a.precision]
     tok=AutoTokenizer.from_pretrained(a.llm,trust_remote_code=True)
     lm=AutoModelForCausalLM.from_pretrained(a.llm,trust_remote_code=True,torch_dtype=dtype)
     if a.init_lora:
@@ -79,7 +79,7 @@ def main():
     if cp: groups.append({"params":cp,"lr":a.lr})
     if lp: groups.append({"params":lp,"lr":a.lora_lr})
     if not groups: raise RuntimeError("No trainable parameters; check stage/LoRA configuration")
-    opt=torch.optim.AdamW(groups,weight_decay=a.weight_decay)
+    opt=torch.optim.AdamW(groups,weight_decay=a.weight_decay)\n    scaler=torch.cuda.amp.GradScaler(enabled=(device=="cuda" and a.precision=="fp16"))\n    amp_dtype={"fp16":torch.float16,"bf16":torch.bfloat16}.get(a.precision,torch.float32)
     out=Path(a.output_dir); out.mkdir(parents=True,exist_ok=True); best=-1.0
     for ep in range(a.epochs):
         model.train(); total=0.0; steps=0
@@ -87,9 +87,13 @@ def main():
             # Training logits are ordered [positive(B), negative(A)]; label 1=positive.
             targets=torch.tensor([1-int(r["label"]) for r in rows],device=device)
             opt.zero_grad(set_to_none=True)
-            with torch.autocast(device_type="cuda",dtype=torch.bfloat16,enabled=(device=="cuda" and a.bf16)):
+            with torch.autocast(device_type="cuda",dtype=amp_dtype,enabled=(device=="cuda" and a.precision!="fp32")):
                 logits=model(rows); loss=torch.nn.functional.cross_entropy(logits,targets)
-            loss.backward(); torch.nn.utils.clip_grad_norm_(trainable,a.max_grad_norm); opt.step()
+            if scaler.is_enabled():
+                scaler.scale(loss).backward(); scaler.unscale_(opt)
+                torch.nn.utils.clip_grad_norm_(trainable,a.max_grad_norm); scaler.step(opt); scaler.update()
+            else:
+                loss.backward(); torch.nn.utils.clip_grad_norm_(trainable,a.max_grad_norm); opt.step()
             total+=float(loss.detach()); steps+=1
         metrics=evaluate(model,val)
         score=sum(v["f1"] for v in metrics.values())/max(1,len(metrics))
