@@ -79,7 +79,9 @@ def main():
     if cp: groups.append({"params":cp,"lr":a.lr})
     if lp: groups.append({"params":lp,"lr":a.lora_lr})
     if not groups: raise RuntimeError("No trainable parameters; check stage/LoRA configuration")
-    opt=torch.optim.AdamW(groups,weight_decay=a.weight_decay)\n    scaler=torch.cuda.amp.GradScaler(enabled=(device=="cuda" and a.precision=="fp16"))\n    amp_dtype={"fp16":torch.float16,"bf16":torch.bfloat16}.get(a.precision,torch.float32)
+    opt=torch.optim.AdamW(groups,weight_decay=a.weight_decay)
+    scaler=torch.cuda.amp.GradScaler(enabled=(device=="cuda" and a.precision=="fp16"))
+    amp_dtype={"fp16":torch.float16,"bf16":torch.bfloat16}.get(a.precision,torch.float32)
     out=Path(a.output_dir); out.mkdir(parents=True,exist_ok=True); best=-1.0
     for ep in range(a.epochs):
         model.train(); total=0.0; steps=0
