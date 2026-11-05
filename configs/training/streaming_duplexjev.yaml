@@ -1,0 +1,20 @@
+llm_checkpoint: /models/your-base-llm
+encoder:
+  adapter: your_project.duplexjev_adapter:build
+  checkpoint: /models/your-streaming-encoder
+  sample_rate: 16000
+  feature_dim: 80
+  encoder_dim: SET_FROM_CHECKPOINT
+  frame_shift_ms: SET_FROM_CHECKPOINT
+  chunk_ms: 160
+  stack_factor: 2
+training:
+  manifest: data/manifest/events.jsonl
+  stage1_epochs: 3
+  stage2_epochs: 2
+  stage3_epochs: 2
+  batch_size: 2
+  connector_lr: 0.0001
+  lora_lr: 0.00002
+  lora_rank: 16
+  seed: 42
